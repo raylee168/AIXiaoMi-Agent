@@ -1414,7 +1414,7 @@ class SmartAlbumManualUploadHandler:
                 if not str(key).startswith("file_"):
                     continue
                 file_obj = params.get(key)
-                if not file_obj:
+                if file_obj is None:
                     continue
                 filename = getattr(file_obj, "filename", "") or f"{key}.jpg"
                 ext = os.path.splitext(filename)[1].lower()
