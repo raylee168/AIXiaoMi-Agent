@@ -16,7 +16,7 @@ const I18N = {
         nav_chat: '对话', nav_manage: '管理', nav_monitor: '监控',
         menu_chat: '对话', menu_config: '配置', menu_models: '模型', menu_skills: '技能',
         menu_memory: '记忆', menu_knowledge: '知识', menu_channels: '通道', menu_tasks: '定时',
-        menu_logs: '日志',
+        menu_album_manual: '主动上传', menu_album_auto: '自动上传', menu_logs: '日志',
         models_title: '模型管理',
         models_desc: '统一管理对话、图像、语音、向量、搜索能力',
         models_section_vendors: '厂商凭据',
@@ -177,6 +177,25 @@ const I18N = {
         feishu_mode_scan: '扫码创建', feishu_mode_manual: '手动填写',
         tasks_title: '定时任务', tasks_desc: '查看和管理定时任务',
         tasks_coming: '即将推出', tasks_coming_desc: '定时任务管理功能即将在此提供',
+        album_manual_title: '模拟主动上传图片',
+        album_manual_desc: '从浏览器选择照片，模拟用户主动上传到智能相册系统',
+        album_auto_title: '模拟自动上传照片',
+        album_auto_desc: '由服务器生成测试照片并按间隔上传，模拟手机后台自动同步',
+        album_user_id: '用户 ID',
+        album_images: '照片',
+        album_images_hint: '建议选择 6 到 12 张照片',
+        album_run_pipeline: '上传后立即触发相册流程',
+        album_manual_submit: '上传',
+        album_auto_start: '开始模拟',
+        album_refresh: '刷新',
+        album_count: '照片数量',
+        album_interval: '间隔秒数',
+        album_uploading: '上传中...',
+        album_started: '已开始',
+        album_done: '完成',
+        album_failed: '失败',
+        album_no_jobs: '暂无自动上传任务',
+        album_pick_images: '请选择照片',
         logs_title: '日志', logs_desc: '实时日志输出 (run.log)',
         logs_live: '实时', logs_coming_msg: '日志流即将在此提供。将连接 run.log 实现类似 tail -f 的实时输出。',
         new_chat: '新对话',
@@ -218,7 +237,7 @@ const I18N = {
         nav_chat: 'Chat', nav_manage: 'Management', nav_monitor: 'Monitor',
         menu_chat: 'Chat', menu_config: 'Config', menu_models: 'Models', menu_skills: 'Skills',
         menu_memory: 'Memory', menu_knowledge: 'Knowledge', menu_channels: 'Channels', menu_tasks: 'Tasks',
-        menu_logs: 'Logs',
+        menu_album_manual: 'Manual Upload', menu_album_auto: 'Auto Upload', menu_logs: 'Logs',
         models_title: 'Models',
         models_desc: 'Manage chat, image, voice, embedding and search capabilities in one place',
         models_section_vendors: 'Vendor Credentials',
@@ -379,6 +398,25 @@ const I18N = {
         feishu_mode_scan: 'Scan QR', feishu_mode_manual: 'Manual',
         tasks_title: 'Scheduled Tasks', tasks_desc: 'View and manage scheduled tasks',
         tasks_coming: 'Coming Soon', tasks_coming_desc: 'Scheduled task management will be available here',
+        album_manual_title: 'Simulate Manual Photo Upload',
+        album_manual_desc: 'Select photos in the browser and simulate a user upload to Smart Album',
+        album_auto_title: 'Simulate Auto Photo Upload',
+        album_auto_desc: 'Generate test photos on the server and upload them at an interval',
+        album_user_id: 'User ID',
+        album_images: 'Photos',
+        album_images_hint: '6 to 12 photos are recommended',
+        album_run_pipeline: 'Run album flow after upload',
+        album_manual_submit: 'Upload',
+        album_auto_start: 'Start',
+        album_refresh: 'Refresh',
+        album_count: 'Photo count',
+        album_interval: 'Interval seconds',
+        album_uploading: 'Uploading...',
+        album_started: 'Started',
+        album_done: 'Done',
+        album_failed: 'Failed',
+        album_no_jobs: 'No auto upload jobs yet',
+        album_pick_images: 'Please select photos',
         logs_title: 'Logs', logs_desc: 'Real-time log output (run.log)',
         logs_live: 'Live', logs_coming_msg: 'Log streaming will be available here. Connects to run.log for real-time output similar to tail -f.',
         new_chat: 'New Chat',
@@ -618,6 +656,8 @@ const VIEW_META = {
     memory:   { group: 'nav_manage',  page: 'menu_memory' },
     knowledge:{ group: 'nav_manage',  page: 'menu_knowledge' },
     channels: { group: 'nav_manage',  page: 'menu_channels' },
+    'album-manual': { group: 'nav_manage', page: 'menu_album_manual' },
+    'album-auto': { group: 'nav_manage', page: 'menu_album_auto' },
     tasks:    { group: 'nav_manage',  page: 'menu_tasks' },
     logs:     { group: 'nav_monitor', page: 'menu_logs' },
 };
@@ -638,6 +678,8 @@ function navigateTo(viewId) {
     document.getElementById('breadcrumb-page').textContent = t(meta.page);
     document.getElementById('breadcrumb-page').dataset.i18n = meta.page;
     currentView = viewId;
+    if (viewId === 'album-manual') initSmartAlbumManualView();
+    if (viewId === 'album-auto') loadSmartAlbumAutoJobs();
     if (window.innerWidth < 1024) closeSidebar();
 }
 
@@ -3706,6 +3748,149 @@ function applyHighlighting(container) {
         _addCodeBlockHeaders(root);
     }, 0);
 }
+
+// =====================================================================
+// Smart Album Simulator
+// =====================================================================
+function makeSmartAlbumUser(prefix) {
+    return `${prefix}_${Math.floor(Date.now() / 1000)}`;
+}
+
+function renderSmartAlbumJson(targetId, payload) {
+    const panel = document.getElementById(targetId);
+    if (!panel) return;
+    const pre = panel.querySelector('pre');
+    pre.textContent = JSON.stringify(payload, null, 2);
+    panel.classList.remove('hidden');
+}
+
+function initSmartAlbumManualView() {
+    const input = document.getElementById('album-manual-user');
+    if (input && !input.value) input.value = makeSmartAlbumUser('web_manual');
+}
+
+function initSmartAlbumAutoView() {
+    const input = document.getElementById('album-auto-user');
+    if (input && !input.value) input.value = makeSmartAlbumUser('web_auto');
+}
+
+async function submitSmartAlbumManualUpload() {
+    const statusEl = document.getElementById('album-manual-status');
+    const button = document.getElementById('album-manual-submit');
+    const userInput = document.getElementById('album-manual-user');
+    const fileInput = document.getElementById('album-manual-files');
+    const files = Array.from(fileInput.files || []);
+    if (!files.length) {
+        statusEl.textContent = t('album_pick_images');
+        statusEl.className = 'text-sm text-red-500';
+        return;
+    }
+    const form = new FormData();
+    form.append('user_id', userInput.value.trim() || makeSmartAlbumUser('web_manual'));
+    form.append('run_pipeline', document.getElementById('album-manual-run').checked ? '1' : '0');
+    files.forEach((file, index) => form.append(`file_${index}`, file, file.name));
+    button.disabled = true;
+    statusEl.textContent = t('album_uploading');
+    statusEl.className = 'text-sm text-slate-500 dark:text-slate-400';
+    try {
+        const response = await fetch('/api/smart-album/manual-upload', { method: 'POST', body: form });
+        const data = await response.json();
+        renderSmartAlbumJson('album-manual-result', data);
+        statusEl.textContent = data.status === 'success' ? t('album_done') : t('album_failed');
+        statusEl.className = data.status === 'success' ? 'text-sm text-primary-500' : 'text-sm text-red-500';
+    } catch (error) {
+        statusEl.textContent = t('album_failed');
+        statusEl.className = 'text-sm text-red-500';
+        renderSmartAlbumJson('album-manual-result', { status: 'error', message: String(error) });
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function startSmartAlbumAutoUpload() {
+    initSmartAlbumAutoView();
+    const statusEl = document.getElementById('album-auto-status');
+    const button = document.getElementById('album-auto-start');
+    button.disabled = true;
+    statusEl.textContent = t('album_uploading');
+    statusEl.className = 'text-sm text-slate-500 dark:text-slate-400';
+    const payload = {
+        user_id: document.getElementById('album-auto-user').value.trim() || makeSmartAlbumUser('web_auto'),
+        count: parseInt(document.getElementById('album-auto-count').value, 10) || 6,
+        interval_seconds: parseFloat(document.getElementById('album-auto-interval').value) || 0,
+        run_pipeline: document.getElementById('album-auto-run').checked,
+    };
+    try {
+        const response = await fetch('/api/smart-album/auto-upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        statusEl.textContent = data.status === 'success' ? t('album_started') : t('album_failed');
+        statusEl.className = data.status === 'success' ? 'text-sm text-primary-500' : 'text-sm text-red-500';
+        await loadSmartAlbumAutoJobs();
+    } catch (error) {
+        statusEl.textContent = t('album_failed');
+        statusEl.className = 'text-sm text-red-500';
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function loadSmartAlbumAutoJobs() {
+    initSmartAlbumAutoView();
+    const list = document.getElementById('album-auto-jobs');
+    if (!list) return;
+    try {
+        const response = await fetch('/api/smart-album/auto-upload');
+        const data = await response.json();
+        const jobs = data.jobs || [];
+        if (!jobs.length) {
+            list.innerHTML = `
+                <div class="flex items-center justify-center py-12 text-sm text-slate-400 dark:text-slate-500">
+                    ${escapeHtml(t('album_no_jobs'))}
+                </div>`;
+            return;
+        }
+        list.innerHTML = jobs.map(job => {
+            const uploaded = Number(job.uploaded || 0);
+            const count = Number(job.count || 0);
+            const pct = count ? Math.round((uploaded / count) * 100) : 0;
+            const statusClass = job.status === 'success'
+                ? 'text-primary-500'
+                : (job.status === 'failed' ? 'text-red-500' : 'text-amber-500');
+            return `
+                <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 p-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="font-mono text-sm text-slate-700 dark:text-slate-200 truncate">${escapeHtml(job.job_id || '')}</span>
+                                <span class="text-xs ${statusClass}">${escapeHtml(job.status || '')}</span>
+                            </div>
+                            <div class="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                                ${escapeHtml(job.user_id || '')} · ${uploaded}/${count} · ${escapeHtml(job.upload_batch_id || '--')}
+                            </div>
+                        </div>
+                        <div class="text-xs text-slate-400 dark:text-slate-500">${escapeHtml(job.updated_at || '')}</div>
+                    </div>
+                    <div class="h-1.5 bg-slate-100 dark:bg-white/10 rounded-full mt-3 overflow-hidden">
+                        <div class="h-full bg-primary-500 rounded-full" style="width:${pct}%"></div>
+                    </div>
+                    ${job.error ? `<div class="text-xs text-red-500 mt-2">${escapeHtml(job.error)}</div>` : ''}
+                </div>`;
+        }).join('');
+    } catch (error) {
+        list.innerHTML = `<div class="text-sm text-red-500">${escapeHtml(String(error))}</div>`;
+    }
+}
+
+const albumManualSubmit = document.getElementById('album-manual-submit');
+if (albumManualSubmit) albumManualSubmit.addEventListener('click', submitSmartAlbumManualUpload);
+const albumAutoStart = document.getElementById('album-auto-start');
+if (albumAutoStart) albumAutoStart.addEventListener('click', startSmartAlbumAutoUpload);
+const albumAutoRefresh = document.getElementById('album-auto-refresh');
+if (albumAutoRefresh) albumAutoRefresh.addEventListener('click', loadSmartAlbumAutoJobs);
 
 // =====================================================================
 // Config View

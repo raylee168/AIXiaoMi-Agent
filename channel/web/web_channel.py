@@ -28,6 +28,9 @@ from config import conf
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv"}
+SMART_ALBUM_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+SMART_ALBUM_AUTO_JOBS = {}
+SMART_ALBUM_AUTO_JOBS_LOCK = threading.Lock()
 
 def _get_web_password() -> str:
     # Coerce to str so non-string values in config.json (e.g. numeric password) won't break comparisons
@@ -179,6 +182,159 @@ def _read_uploaded_file_bytes(file_obj) -> bytes:
     if isinstance(content, str):
         return content.encode("utf-8")
     raise TypeError(f"Unsupported uploaded content type: {type(content).__name__}")
+
+
+def _smart_album_base_urls():
+    return {
+        "account": (conf().get("smart_album_account_base_url") or "http://127.0.0.1:8001").rstrip("/"),
+        "gateway": (conf().get("smart_album_gateway_base_url") or "http://127.0.0.1:8002").rstrip("/"),
+        "friend_album": (conf().get("smart_album_friend_album_base_url") or "http://127.0.0.1:8003").rstrip("/"),
+    }
+
+
+def _smart_album_request(method, url, **kwargs):
+    import requests
+
+    timeout = kwargs.pop("timeout", 30)
+    response = requests.request(method, url, timeout=timeout, **kwargs)
+    response.raise_for_status()
+    if not response.content:
+        return {}
+    return response.json()
+
+
+def _smart_album_prepare_user(user_id: str) -> None:
+    urls = _smart_album_base_urls()
+    try:
+        _smart_album_request(
+            "POST",
+            f"{urls['account']}/internal/users",
+            json={"user_id": user_id, "nickname": "Web 模拟用户"},
+        )
+    except Exception:
+        # Existing test users are fine; the following settings call is idempotent.
+        pass
+    _smart_album_request(
+        "PUT",
+        f"{urls['account']}/internal/users/{user_id}/smart-generation-settings",
+        json={
+            "smart_generation_enabled": True,
+            "auto_charge_agreed": True,
+            "default_album_count": 2,
+            "trigger_photo_threshold": 6,
+        },
+    )
+    _smart_album_request(
+        "POST",
+        f"{urls['account']}/internal/recharge/orders",
+        json={"user_id": user_id, "amount_yuan": 10, "payment_channel": "web_simulator"},
+    )
+
+
+def _smart_album_upload_images(user_id: str, images: list, upload_type: str) -> dict:
+    urls = _smart_album_base_urls()
+    batch = _smart_album_request(
+        "POST",
+        f"{urls['gateway']}/api/upload/batches",
+        json={
+            "user_id": user_id,
+            "source_channel": "agent_web",
+            "upload_type": upload_type,
+            "expected_photo_count": len(images),
+        },
+    )
+    batch_id = batch["upload_batch_id"]
+    uploaded = []
+    for image in images:
+        filename = image["filename"]
+        mime_type = image.get("mime_type") or mimetypes.guess_type(filename)[0] or "image/jpeg"
+        payload = {"user_id": (None, user_id), "file": (filename, image["content"], mime_type)}
+        result = _smart_album_request(
+            "POST",
+            f"{urls['gateway']}/api/upload/batches/{batch_id}/photos",
+            files=payload,
+            timeout=60,
+        )
+        uploaded.append(result)
+    completed = _smart_album_request("POST", f"{urls['gateway']}/api/upload/batches/{batch_id}/complete")
+    return {"upload_batch_id": batch_id, "uploaded": uploaded, "completed": completed}
+
+
+def _smart_album_run_pipeline() -> dict:
+    urls = _smart_album_base_urls()
+    return _smart_album_request("POST", f"{urls['friend_album']}/internal/schedulers/run-all", timeout=120)
+
+
+def _smart_album_generate_image(index: int, user_id: str) -> bytes:
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+
+    palette = [
+        "#d94f30", "#2f7d57", "#355c9a", "#e0b84f", "#8e5ca2", "#2e9fb3",
+        "#c43d68", "#5d7d2f", "#a66f2e", "#277c7a", "#914f8f", "#416c45",
+    ]
+    color = palette[index % len(palette)]
+    image = Image.new("RGB", (900, 700), color)
+    draw = ImageDraw.Draw(image)
+    for step in range(0, 1000, 70):
+        draw.line((step, 0, 900 - step // 3, 700), fill=(255, 255, 255), width=3)
+    draw.rectangle((100 + index * 4, 110, 790, 590), outline=(30, 30, 30), width=8)
+    draw.ellipse((150, 150, 330, 330), outline=(255, 255, 255), width=6)
+    draw.text((130, 620), f"{user_id} auto photo {index + 1}", fill=(255, 255, 255))
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=92)
+    return buffer.getvalue()
+
+
+def _smart_album_set_job(job_id: str, **updates):
+    with SMART_ALBUM_AUTO_JOBS_LOCK:
+        job = SMART_ALBUM_AUTO_JOBS.setdefault(job_id, {})
+        job.update(updates)
+        job["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+        return dict(job)
+
+
+def _smart_album_run_auto_job(job_id: str):
+    job = _smart_album_set_job(job_id, status="running", uploaded=0)
+    user_id = job["user_id"]
+    count = int(job["count"])
+    interval_seconds = float(job["interval_seconds"])
+    run_pipeline = bool(job["run_pipeline"])
+    urls = _smart_album_base_urls()
+    try:
+        _smart_album_prepare_user(user_id)
+        batch = _smart_album_request(
+            "POST",
+            f"{urls['gateway']}/api/upload/batches",
+            json={
+                "user_id": user_id,
+                "source_channel": "agent_web_auto",
+                "upload_type": "auto_simulated",
+                "expected_photo_count": count,
+            },
+        )
+        batch_id = batch["upload_batch_id"]
+        _smart_album_set_job(job_id, upload_batch_id=batch_id)
+        for index in range(count):
+            image_bytes = _smart_album_generate_image(index, user_id)
+            filename = f"auto_{index + 1:02d}.jpg"
+            _smart_album_request(
+                "POST",
+                f"{urls['gateway']}/api/upload/batches/{batch_id}/photos",
+                files={"user_id": (None, user_id), "file": (filename, image_bytes, "image/jpeg")},
+                timeout=60,
+            )
+            _smart_album_set_job(job_id, uploaded=index + 1)
+            if index < count - 1 and interval_seconds > 0:
+                time.sleep(interval_seconds)
+        completed = _smart_album_request("POST", f"{urls['gateway']}/api/upload/batches/{batch_id}/complete")
+        result = {"completed": completed}
+        if run_pipeline:
+            result["pipeline"] = _smart_album_run_pipeline()
+        _smart_album_set_job(job_id, status="success", result=result)
+    except Exception as exc:
+        logger.exception(f"[SmartAlbumSimulator] auto job failed: {exc}")
+        _smart_album_set_job(job_id, status="failed", error=str(exc))
 
 
 def _raw_web_input():
@@ -1117,6 +1273,8 @@ class WebChannel(ChatChannel):
             '/api/file', 'FileServeHandler',
             '/api/voice/asr', 'VoiceAsrHandler',
             '/api/voice/tts', 'VoiceTtsHandler',
+            '/api/smart-album/manual-upload', 'SmartAlbumManualUploadHandler',
+            '/api/smart-album/auto-upload', 'SmartAlbumAutoUploadHandler',
             '/poll', 'PollHandler',
             '/stream', 'StreamHandler',
             '/cancel', 'CancelHandler',
@@ -1241,6 +1399,94 @@ class UploadHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         return WebChannel().upload_file()
+
+
+class SmartAlbumManualUploadHandler:
+    def POST(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = _raw_web_input()
+            user_id = (params.get("user_id") or "").strip() or f"web_manual_{int(time.time())}"
+            run_pipeline = str(params.get("run_pipeline") or "").lower() in ("1", "true", "yes", "on")
+            file_items = []
+            for key in params:
+                if not str(key).startswith("file_"):
+                    continue
+                file_obj = params.get(key)
+                if not file_obj:
+                    continue
+                filename = getattr(file_obj, "filename", "") or f"{key}.jpg"
+                ext = os.path.splitext(filename)[1].lower()
+                if ext not in SMART_ALBUM_IMAGE_EXTENSIONS:
+                    continue
+                content = _read_uploaded_file_bytes(file_obj)
+                if content:
+                    file_items.append({
+                        "filename": filename,
+                        "content": content,
+                        "mime_type": mimetypes.guess_type(filename)[0] or "image/jpeg",
+                    })
+            if not file_items:
+                return json.dumps({"status": "error", "message": "no image files"})
+            if len(file_items) > 20:
+                return json.dumps({"status": "error", "message": "too many files, max 20"})
+
+            _smart_album_prepare_user(user_id)
+            upload_result = _smart_album_upload_images(user_id, file_items, "manual_simulated")
+            pipeline_result = _smart_album_run_pipeline() if run_pipeline else None
+            return json.dumps(
+                {
+                    "status": "success",
+                    "user_id": user_id,
+                    "photo_count": len(file_items),
+                    "upload": upload_result,
+                    "pipeline": pipeline_result,
+                },
+                ensure_ascii=False,
+            )
+        except Exception as exc:
+            logger.exception(f"[SmartAlbumSimulator] manual upload failed: {exc}")
+            return json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False)
+
+
+class SmartAlbumAutoUploadHandler:
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        with SMART_ALBUM_AUTO_JOBS_LOCK:
+            jobs = sorted(SMART_ALBUM_AUTO_JOBS.values(), key=lambda item: item.get("created_at", ""), reverse=True)
+        return json.dumps({"status": "success", "jobs": jobs[:20]}, ensure_ascii=False)
+
+    def POST(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or b"{}")
+            user_id = (body.get("user_id") or "").strip() or f"web_auto_{int(time.time())}"
+            count = max(1, min(int(body.get("count") or 6), 20))
+            interval_seconds = max(0, min(float(body.get("interval_seconds") or 1), 30))
+            run_pipeline = bool(body.get("run_pipeline", True))
+            job_id = f"album_auto_{uuid.uuid4().hex[:12]}"
+            now = datetime.datetime.utcnow().isoformat() + "Z"
+            with SMART_ALBUM_AUTO_JOBS_LOCK:
+                SMART_ALBUM_AUTO_JOBS[job_id] = {
+                    "job_id": job_id,
+                    "status": "queued",
+                    "user_id": user_id,
+                    "count": count,
+                    "interval_seconds": interval_seconds,
+                    "run_pipeline": run_pipeline,
+                    "uploaded": 0,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            thread = threading.Thread(target=_smart_album_run_auto_job, args=(job_id,), daemon=True)
+            thread.start()
+            return json.dumps({"status": "success", "job_id": job_id}, ensure_ascii=False)
+        except Exception as exc:
+            logger.exception(f"[SmartAlbumSimulator] start auto upload failed: {exc}")
+            return json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False)
 
 
 class VoiceAsrHandler:
