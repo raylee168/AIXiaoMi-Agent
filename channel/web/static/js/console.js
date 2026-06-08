@@ -13,7 +13,7 @@ let APP_VERSION = '';
 const I18N = {
     zh: {
         console: '控制台',
-        nav_chat: '对话', nav_manage: '管理', nav_monitor: '监控',
+        nav_chat: '对话', nav_manage: '管理', nav_album: '朋友圈相册', nav_monitor: '监控',
         menu_chat: '对话', menu_config: '配置', menu_models: '模型', menu_skills: '技能',
         menu_memory: '记忆', menu_knowledge: '知识', menu_channels: '通道', menu_tasks: '定时',
         menu_album_manual: '主动上传', menu_album_auto: '自动上传', menu_album_templates: '相册模板', menu_logs: '日志',
@@ -237,7 +237,7 @@ const I18N = {
     },
     en: {
         console: 'Console',
-        nav_chat: 'Chat', nav_manage: 'Management', nav_monitor: 'Monitor',
+        nav_chat: 'Chat', nav_manage: 'Management', nav_album: 'Moments Album', nav_monitor: 'Monitor',
         menu_chat: 'Chat', menu_config: 'Config', menu_models: 'Models', menu_skills: 'Skills',
         menu_memory: 'Memory', menu_knowledge: 'Knowledge', menu_channels: 'Channels', menu_tasks: 'Tasks',
         menu_album_manual: 'Manual Upload', menu_album_auto: 'Auto Upload', menu_album_templates: 'Album Templates', menu_logs: 'Logs',
@@ -662,9 +662,9 @@ const VIEW_META = {
     memory:   { group: 'nav_manage',  page: 'menu_memory' },
     knowledge:{ group: 'nav_manage',  page: 'menu_knowledge' },
     channels: { group: 'nav_manage',  page: 'menu_channels' },
-    'album-manual': { group: 'nav_manage', page: 'menu_album_manual' },
-    'album-auto': { group: 'nav_manage', page: 'menu_album_auto' },
-    'album-templates': { group: 'nav_manage', page: 'menu_album_templates' },
+    'album-manual': { group: 'nav_album', page: 'menu_album_manual' },
+    'album-auto': { group: 'nav_album', page: 'menu_album_auto' },
+    'album-templates': { group: 'nav_album', page: 'menu_album_templates' },
     tasks:    { group: 'nav_manage',  page: 'menu_tasks' },
     logs:     { group: 'nav_monitor', page: 'menu_logs' },
 };
