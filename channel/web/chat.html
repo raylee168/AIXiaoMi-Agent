@@ -192,6 +192,11 @@
                             <span data-i18n="menu_album_auto">自动上传</span>
                         </a>
                         <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
+                           data-view="album-templates">
+                            <i class="fas fa-layer-group item-icon text-xs w-5 text-center"></i>
+                            <span data-i18n="menu_album_templates">相册模板</span>
+                        </a>
+                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="tasks">
                             <i class="fas fa-clock item-icon text-xs w-5 text-center"></i>
                             <span data-i18n="menu_tasks">定时</span>
@@ -1079,6 +1084,81 @@
                                 </div>
                             </div>
                             <div id="album-auto-jobs" class="grid gap-3 mt-4"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ====================================================== -->
+                <!-- VIEW: Smart Album Templates                              -->
+                <!-- ====================================================== -->
+                <div id="view-album-templates" class="view">
+                    <div class="flex-1 overflow-y-auto p-6">
+                        <div class="max-w-7xl mx-auto">
+                            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+                                <div>
+                                    <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="album_templates_title">相册模板管理</h2>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1" data-i18n="album_templates_desc">管理给 AI 使用的模板说明、布局、匹配规则和预览图</p>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <button id="album-template-refresh"
+                                            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer transition-colors duration-150">
+                                        <i class="fas fa-rotate text-xs"></i>
+                                        <span data-i18n="album_refresh">刷新</span>
+                                    </button>
+                                    <button id="album-template-generate-duanwu"
+                                            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium cursor-pointer transition-colors duration-150">
+                                        <i class="fas fa-wand-magic-sparkles text-xs"></i>
+                                        <span data-i18n="album_templates_generate_duanwu">生成端午模板</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-5">
+                                <div class="space-y-4 min-w-0">
+                                    <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 p-4">
+                                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                            <input id="album-template-search" placeholder="搜索模板"
+                                                   class="md:col-span-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500">
+                                            <select id="album-template-status"
+                                                    class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-[#111111] text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500">
+                                                <option value="">全部状态</option>
+                                                <option value="draft">草稿</option>
+                                                <option value="published">已发布</option>
+                                                <option value="archived">已下架</option>
+                                            </select>
+                                            <button id="album-template-filter"
+                                                    class="px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5">
+                                                筛选
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="album-template-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                                </div>
+
+                                <aside class="space-y-4 min-w-0">
+                                    <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 p-4">
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">匹配测试</h3>
+                                        <div class="space-y-3">
+                                            <input id="album-template-match-batch" placeholder="上传批次 ID，可为空"
+                                                   class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500 font-mono">
+                                            <input id="album-template-match-count" type="number" min="1" max="30" value="9" placeholder="照片数量"
+                                                   class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500">
+                                            <input id="album-template-match-tags" placeholder="场景标签，用逗号分隔，例如：端午,美食,朋友"
+                                                   class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500">
+                                            <button id="album-template-match-run"
+                                                    class="w-full px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 dark:bg-white/10 dark:hover:bg-white/15 text-white text-sm font-medium">
+                                                测试匹配
+                                            </button>
+                                        </div>
+                                        <div id="album-template-match-result" class="mt-3 text-sm text-slate-500 dark:text-slate-400"></div>
+                                    </div>
+
+                                    <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 p-4">
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">模板详情</h3>
+                                        <div id="album-template-detail" class="text-sm text-slate-500 dark:text-slate-400">请选择一个模板。</div>
+                                    </div>
+                                </aside>
+                            </div>
                         </div>
                     </div>
                 </div>

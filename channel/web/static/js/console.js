@@ -16,7 +16,7 @@ const I18N = {
         nav_chat: '对话', nav_manage: '管理', nav_monitor: '监控',
         menu_chat: '对话', menu_config: '配置', menu_models: '模型', menu_skills: '技能',
         menu_memory: '记忆', menu_knowledge: '知识', menu_channels: '通道', menu_tasks: '定时',
-        menu_album_manual: '主动上传', menu_album_auto: '自动上传', menu_logs: '日志',
+        menu_album_manual: '主动上传', menu_album_auto: '自动上传', menu_album_templates: '相册模板', menu_logs: '日志',
         models_title: '模型管理',
         models_desc: '统一管理对话、图像、语音、向量、搜索能力',
         models_section_vendors: '厂商凭据',
@@ -196,6 +196,9 @@ const I18N = {
         album_failed: '失败',
         album_no_jobs: '暂无自动上传任务',
         album_pick_images: '请选择照片',
+        album_templates_title: '相册模板管理',
+        album_templates_desc: '管理给 AI 使用的模板说明、布局、匹配规则和预览图',
+        album_templates_generate_duanwu: '生成端午模板',
         logs_title: '日志', logs_desc: '实时日志输出 (run.log)',
         logs_live: '实时', logs_coming_msg: '日志流即将在此提供。将连接 run.log 实现类似 tail -f 的实时输出。',
         new_chat: '新对话',
@@ -237,7 +240,7 @@ const I18N = {
         nav_chat: 'Chat', nav_manage: 'Management', nav_monitor: 'Monitor',
         menu_chat: 'Chat', menu_config: 'Config', menu_models: 'Models', menu_skills: 'Skills',
         menu_memory: 'Memory', menu_knowledge: 'Knowledge', menu_channels: 'Channels', menu_tasks: 'Tasks',
-        menu_album_manual: 'Manual Upload', menu_album_auto: 'Auto Upload', menu_logs: 'Logs',
+        menu_album_manual: 'Manual Upload', menu_album_auto: 'Auto Upload', menu_album_templates: 'Album Templates', menu_logs: 'Logs',
         models_title: 'Models',
         models_desc: 'Manage chat, image, voice, embedding and search capabilities in one place',
         models_section_vendors: 'Vendor Credentials',
@@ -417,6 +420,9 @@ const I18N = {
         album_failed: 'Failed',
         album_no_jobs: 'No auto upload jobs yet',
         album_pick_images: 'Please select photos',
+        album_templates_title: 'Album Template Management',
+        album_templates_desc: 'Manage AI-readable template descriptions, layouts, matching rules and previews',
+        album_templates_generate_duanwu: 'Generate Dragon Boat Templates',
         logs_title: 'Logs', logs_desc: 'Real-time log output (run.log)',
         logs_live: 'Live', logs_coming_msg: 'Log streaming will be available here. Connects to run.log for real-time output similar to tail -f.',
         new_chat: 'New Chat',
@@ -658,6 +664,7 @@ const VIEW_META = {
     channels: { group: 'nav_manage',  page: 'menu_channels' },
     'album-manual': { group: 'nav_manage', page: 'menu_album_manual' },
     'album-auto': { group: 'nav_manage', page: 'menu_album_auto' },
+    'album-templates': { group: 'nav_manage', page: 'menu_album_templates' },
     tasks:    { group: 'nav_manage',  page: 'menu_tasks' },
     logs:     { group: 'nav_monitor', page: 'menu_logs' },
 };
@@ -680,6 +687,7 @@ function navigateTo(viewId) {
     currentView = viewId;
     if (viewId === 'album-manual') initSmartAlbumManualView();
     if (viewId === 'album-auto') loadSmartAlbumAutoJobs();
+    if (viewId === 'album-templates') loadAlbumTemplates();
     if (window.innerWidth < 1024) closeSidebar();
 }
 
@@ -3885,12 +3893,193 @@ async function loadSmartAlbumAutoJobs() {
     }
 }
 
+let albumTemplateState = { items: [], selectedId: null };
+
+async function albumTemplateFetch(path, options) {
+    const response = await fetch('/api/smart-album/templates' + path, options || {});
+    const data = await response.json();
+    if (data.status === 'error') throw new Error(data.message || 'request failed');
+    return data;
+}
+
+async function loadAlbumTemplates() {
+    const list = document.getElementById('album-template-list');
+    if (!list) return;
+    list.innerHTML = '<div class="text-sm text-slate-400">加载中...</div>';
+    const params = new URLSearchParams();
+    const status = document.getElementById('album-template-status')?.value || '';
+    const q = document.getElementById('album-template-search')?.value || '';
+    if (status) params.set('status', status);
+    if (q) params.set('q', q);
+    try {
+        const data = await albumTemplateFetch(params.toString() ? '?' + params.toString() : '');
+        albumTemplateState.items = data.items || [];
+        if (!albumTemplateState.selectedId && albumTemplateState.items.length) {
+            albumTemplateState.selectedId = albumTemplateState.items[0].template_id;
+        }
+        renderAlbumTemplates();
+        renderAlbumTemplateDetail();
+    } catch (error) {
+        list.innerHTML = `<div class="text-sm text-red-500">${escapeHtml(String(error))}</div>`;
+    }
+}
+
+function renderAlbumTemplates() {
+    const list = document.getElementById('album-template-list');
+    if (!list) return;
+    if (!albumTemplateState.items.length) {
+        list.innerHTML = `
+            <div class="md:col-span-2 flex flex-col items-center justify-center py-16 text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-white/10 rounded-xl">
+                <i class="fas fa-layer-group text-2xl mb-3"></i>
+                <div class="text-sm">暂无模板，点击“生成端午模板”创建第一批模板。</div>
+            </div>`;
+        return;
+    }
+    list.innerHTML = albumTemplateState.items.map(item => {
+        const preview = item.preview_asset && item.preview_asset.data_url
+            ? `<img src="${item.preview_asset.data_url}" class="w-full aspect-square object-cover rounded-lg border border-slate-100 dark:border-white/10" alt="">`
+            : `<div class="w-full aspect-square rounded-lg border border-dashed border-slate-200 dark:border-white/10 grid place-items-center text-slate-400">无预览</div>`;
+        const statusClass = item.status === 'published' ? 'text-primary-500 bg-primary-50 dark:bg-primary-900/20' : (item.status === 'archived' ? 'text-slate-400 bg-slate-100 dark:bg-white/5' : 'text-amber-600 bg-amber-50 dark:bg-amber-900/20');
+        return `
+            <button class="album-template-card text-left bg-white dark:bg-[#1A1A1A] rounded-xl border ${item.template_id === albumTemplateState.selectedId ? 'border-primary-400' : 'border-slate-200 dark:border-white/10'} p-4 hover:border-primary-400 transition-colors" data-template-id="${escapeHtml(item.template_id)}">
+                ${preview}
+                <div class="flex items-center justify-between gap-2 mt-3">
+                    <div class="font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(item.name)}</div>
+                    <span class="text-xs px-2 py-1 rounded-full ${statusClass}">${escapeHtml(item.status)}</span>
+                </div>
+                <div class="text-xs text-slate-400 dark:text-slate-500 mt-1">${escapeHtml(item.category)} / ${item.min_photo_count}-${item.max_photo_count} 张</div>
+                <div class="flex flex-wrap gap-1.5 mt-3">
+                    ${(item.theme_tags || []).slice(0, 4).map(tag => `<span class="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400">${escapeHtml(tag)}</span>`).join('')}
+                </div>
+            </button>`;
+    }).join('');
+    document.querySelectorAll('.album-template-card').forEach(card => {
+        card.addEventListener('click', () => {
+            albumTemplateState.selectedId = card.dataset.templateId;
+            renderAlbumTemplates();
+            renderAlbumTemplateDetail();
+        });
+    });
+}
+
+function selectedAlbumTemplate() {
+    return albumTemplateState.items.find(item => item.template_id === albumTemplateState.selectedId) || null;
+}
+
+function renderAlbumTemplateDetail() {
+    const box = document.getElementById('album-template-detail');
+    if (!box) return;
+    const item = selectedAlbumTemplate();
+    if (!item) {
+        box.textContent = '请选择一个模板。';
+        return;
+    }
+    const version = item.version || {};
+    const templateJson = version.template_json || {};
+    box.innerHTML = `
+        <div class="space-y-4">
+            <div>
+                <div class="text-base font-semibold text-slate-800 dark:text-slate-100">${escapeHtml(item.name)}</div>
+                <div class="text-xs text-slate-400 dark:text-slate-500 font-mono mt-1">${escapeHtml(item.template_id)} / ${escapeHtml(item.current_version)}</div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-xs">
+                <div class="rounded-lg bg-slate-50 dark:bg-white/5 p-2"><div class="text-slate-400">状态</div><div>${escapeHtml(item.status)}</div></div>
+                <div class="rounded-lg bg-slate-50 dark:bg-white/5 p-2"><div class="text-slate-400">类型</div><div>${escapeHtml(templateJson.layout?.type || '-')}</div></div>
+                <div class="rounded-lg bg-slate-50 dark:bg-white/5 p-2"><div class="text-slate-400">照片</div><div>${item.min_photo_count}-${item.max_photo_count}</div></div>
+            </div>
+            <div>
+                <div class="text-xs text-slate-400 mb-1">AI 模板说明</div>
+                <div class="text-sm leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-wrap">${escapeHtml(version.llm_prompt || '-')}</div>
+            </div>
+            <div>
+                <div class="text-xs text-slate-400 mb-1">模板 JSON</div>
+                <pre class="max-h-72 overflow-auto rounded-lg bg-slate-900 text-slate-100 text-xs p-3">${escapeHtml(JSON.stringify(templateJson, null, 2))}</pre>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button class="album-template-action px-3 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm" data-action="publish">发布</button>
+                <button class="album-template-action px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm" data-action="preview">重建预览</button>
+                <button class="album-template-action px-3 py-2 rounded-lg border border-red-200 dark:border-red-900/50 text-red-500 text-sm" data-action="archive">下架</button>
+            </div>
+        </div>`;
+    box.querySelectorAll('.album-template-action').forEach(btn => {
+        btn.addEventListener('click', () => runAlbumTemplateAction(item.template_id, btn.dataset.action));
+    });
+}
+
+async function runAlbumTemplateAction(templateId, action) {
+    try {
+        const path = action === 'preview' ? `/${encodeURIComponent(templateId)}/preview` : `/${encodeURIComponent(templateId)}/${action}`;
+        await albumTemplateFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        await loadAlbumTemplates();
+    } catch (error) {
+        alert(String(error));
+    }
+}
+
+async function generateDuanwuTemplates() {
+    const button = document.getElementById('album-template-generate-duanwu');
+    if (button) button.disabled = true;
+    try {
+        await albumTemplateFetch('/generate-seasonal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                festival: '端午节',
+                target_count: 8,
+                photo_count_min: 1,
+                photo_count_max: 12,
+                style_direction: '朋友圈、清新、节日氛围、适合自动生成',
+            }),
+        });
+        await loadAlbumTemplates();
+    } catch (error) {
+        alert(String(error));
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function runAlbumTemplateMatchTest() {
+    const box = document.getElementById('album-template-match-result');
+    if (!box) return;
+    box.textContent = '匹配中...';
+    const batch = document.getElementById('album-template-match-batch').value.trim();
+    const tags = document.getElementById('album-template-match-tags').value.split(',').map(v => v.trim()).filter(Boolean);
+    const count = parseInt(document.getElementById('album-template-match-count').value, 10) || 9;
+    try {
+        const data = await albumTemplateFetch('/match-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(batch ? { upload_batch_id: batch, limit: 8 } : { photo_count: count, scene_tags: tags, limit: 8 }),
+        });
+        const matches = data.matches || [];
+        box.innerHTML = matches.length ? matches.map(item => `
+            <div class="rounded-lg border border-slate-200 dark:border-white/10 p-3 mb-2">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="font-medium text-slate-700 dark:text-slate-200">${escapeHtml(item.name)}</span>
+                    <span class="text-xs text-primary-500">${Math.round(Number(item.score || 0) * 100)}%</span>
+                </div>
+                <div class="text-xs text-slate-400 mt-1">${escapeHtml(item.reason || '')}</div>
+            </div>`).join('') : '没有匹配到已发布模板。';
+    } catch (error) {
+        box.innerHTML = `<span class="text-red-500">${escapeHtml(String(error))}</span>`;
+    }
+}
+
 const albumManualSubmit = document.getElementById('album-manual-submit');
 if (albumManualSubmit) albumManualSubmit.addEventListener('click', submitSmartAlbumManualUpload);
 const albumAutoStart = document.getElementById('album-auto-start');
 if (albumAutoStart) albumAutoStart.addEventListener('click', startSmartAlbumAutoUpload);
 const albumAutoRefresh = document.getElementById('album-auto-refresh');
 if (albumAutoRefresh) albumAutoRefresh.addEventListener('click', loadSmartAlbumAutoJobs);
+const albumTemplateRefresh = document.getElementById('album-template-refresh');
+if (albumTemplateRefresh) albumTemplateRefresh.addEventListener('click', loadAlbumTemplates);
+const albumTemplateFilter = document.getElementById('album-template-filter');
+if (albumTemplateFilter) albumTemplateFilter.addEventListener('click', loadAlbumTemplates);
+const albumTemplateGenerateDuanwu = document.getElementById('album-template-generate-duanwu');
+if (albumTemplateGenerateDuanwu) albumTemplateGenerateDuanwu.addEventListener('click', generateDuanwuTemplates);
+const albumTemplateMatchRun = document.getElementById('album-template-match-run');
+if (albumTemplateMatchRun) albumTemplateMatchRun.addEventListener('click', runAlbumTemplateMatchTest);
 
 // =====================================================================
 // Config View

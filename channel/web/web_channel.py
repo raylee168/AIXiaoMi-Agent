@@ -1275,6 +1275,8 @@ class WebChannel(ChatChannel):
             '/api/voice/tts', 'VoiceTtsHandler',
             '/api/smart-album/manual-upload', 'SmartAlbumManualUploadHandler',
             '/api/smart-album/auto-upload', 'SmartAlbumAutoUploadHandler',
+            '/api/smart-album/templates', 'SmartAlbumTemplatesProxyHandler',
+            '/api/smart-album/templates/(.*)', 'SmartAlbumTemplateProxyHandler',
             '/poll', 'PollHandler',
             '/stream', 'StreamHandler',
             '/cancel', 'CancelHandler',
@@ -1487,6 +1489,48 @@ class SmartAlbumAutoUploadHandler:
         except Exception as exc:
             logger.exception(f"[SmartAlbumSimulator] start auto upload failed: {exc}")
             return json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False)
+
+
+def _smart_album_template_proxy(method: str, path: str = ""):
+    _require_auth()
+    web.header('Content-Type', 'application/json; charset=utf-8')
+    urls = _smart_album_base_urls()
+    suffix = (path or "").strip("/")
+    target = f"{urls['friend_album']}/internal/templates"
+    if suffix:
+        target = f"{target}/{suffix}"
+    if method == "GET" and getattr(web.ctx, "query", ""):
+        target = target + web.ctx.query
+    try:
+        kwargs = {}
+        if method in ("POST", "PUT"):
+            raw = web.data() or b"{}"
+            kwargs["data"] = raw
+            kwargs["headers"] = {"Content-Type": "application/json"}
+        payload = _smart_album_request(method, target, timeout=120, **kwargs)
+        return json.dumps({"status": "success", **payload}, ensure_ascii=False)
+    except Exception as exc:
+        logger.exception(f"[SmartAlbumTemplates] proxy failed: {exc}")
+        return json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False)
+
+
+class SmartAlbumTemplatesProxyHandler:
+    def GET(self):
+        return _smart_album_template_proxy("GET")
+
+    def POST(self):
+        return _smart_album_template_proxy("POST")
+
+
+class SmartAlbumTemplateProxyHandler:
+    def GET(self, path):
+        return _smart_album_template_proxy("GET", path)
+
+    def POST(self, path):
+        return _smart_album_template_proxy("POST", path)
+
+    def PUT(self, path):
+        return _smart_album_template_proxy("PUT", path)
 
 
 class VoiceAsrHandler:
