@@ -3930,6 +3930,10 @@ function initAlbumTemplateFactoryPrompt() {
     if (!input || input.dataset.initialized) return;
     input.dataset.initialized = '1';
     input.value = '我要制作一个用户仅需要1-6张照片，就能生成创意相册的模板，你以端午节为主题，基于现有的基础模板，制作20个用户模板，生成一些端午节祝福的图片，预先填充基础模板，预留几张空白9宫格位置，填充用户上传的图片';
+    const execName = document.getElementById('album-exec-template-name');
+    const execPrompt = document.getElementById('album-exec-template-prompt');
+    if (execName && !execName.value) execName.value = '端午六图填充模板';
+    if (execPrompt && !execPrompt.value) execPrompt.value = '端午节清新九宫格模板，中间固定粽子和祝福装饰，上下留出用户照片空位';
 }
 
 async function loadAlbumBaseTemplates() {
@@ -4096,6 +4100,46 @@ async function generateAlbumTemplatesFromFactory() {
     }
 }
 
+async function createExecutableAlbumTemplate() {
+    const button = document.getElementById('album-exec-template-create');
+    const status = document.getElementById('album-exec-template-status');
+    const type = document.getElementById('album-exec-template-type')?.value || 'grid_fill';
+    const name = (document.getElementById('album-exec-template-name')?.value || '').trim();
+    const prompt = (document.getElementById('album-exec-template-prompt')?.value || '').trim();
+    const count = Math.max(1, Math.min(9, parseInt(document.getElementById('album-exec-template-count')?.value || '6', 10) || 6));
+    if (!name || !prompt) {
+        if (status) status.innerHTML = '<span class="text-red-500">请填写模板名称和底图提示词。</span>';
+        return;
+    }
+    if (button) button.disabled = true;
+    if (status) status.textContent = '正在生成模板底图并创建草稿...';
+    try {
+        const payload = {
+            template_type: type,
+            name,
+            prompt,
+            min_photo_count: 1,
+            max_photo_count: type === 'subject_cutout' ? 1 : count,
+            theme_tags: prompt.includes('端午') ? ['端午节'] : [],
+            style_tags: ['真实模板'],
+            size: '1024x1024',
+        };
+        const data = await albumTemplateFetch('/executable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (status) status.textContent = `已创建草稿：${data.name || name}，请在列表中预览后手动发布。`;
+        document.getElementById('album-template-status').value = 'draft';
+        albumTemplateState.selectedId = data.template_id;
+        await loadAlbumTemplates();
+    } catch (error) {
+        if (status) status.innerHTML = `<span class="text-red-500">${escapeHtml(String(error))}</span>`;
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 async function runAlbumTemplateMatchTest() {
     const box = document.getElementById('album-template-match-result');
     if (!box) return;
@@ -4137,6 +4181,8 @@ const albumTemplateFactoryGenerate = document.getElementById('album-template-fac
 if (albumTemplateFactoryGenerate) albumTemplateFactoryGenerate.addEventListener('click', generateAlbumTemplatesFromFactory);
 const albumTemplateShowBase = document.getElementById('album-template-show-base');
 if (albumTemplateShowBase) albumTemplateShowBase.addEventListener('click', toggleAlbumBaseTemplates);
+const albumExecTemplateCreate = document.getElementById('album-exec-template-create');
+if (albumExecTemplateCreate) albumExecTemplateCreate.addEventListener('click', createExecutableAlbumTemplate);
 const albumTemplateMatchRun = document.getElementById('album-template-match-run');
 if (albumTemplateMatchRun) albumTemplateMatchRun.addEventListener('click', runAlbumTemplateMatchTest);
 
