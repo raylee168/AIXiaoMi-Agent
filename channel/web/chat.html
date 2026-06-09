@@ -1115,12 +1115,33 @@
                                         <i class="fas fa-rotate text-xs"></i>
                                         <span data-i18n="album_refresh">刷新</span>
                                     </button>
-                                    <button id="album-template-generate-duanwu"
-                                            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium cursor-pointer transition-colors duration-150">
-                                        <i class="fas fa-wand-magic-sparkles text-xs"></i>
-                                        <span data-i18n="album_templates_generate_duanwu">生成端午模板</span>
+                                </div>
+                            </div>
+
+                            <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 p-4 mb-5">
+                                <div class="flex items-start justify-between gap-4 mb-3">
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">模板工厂对话</h3>
+                                        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">说出你想要的模板批次，系统会基于固定底层模板生成用户模板草稿，确认后再发布。</p>
+                                    </div>
+                                    <button id="album-template-show-base"
+                                            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm hover:bg-slate-50 dark:hover:bg-white/5">
+                                        <i class="fas fa-shapes text-xs"></i>
+                                        <span>查看底层模板</span>
                                     </button>
                                 </div>
+                                <textarea id="album-template-factory-prompt" rows="4"
+                                          class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500 resize-y"
+                                          placeholder="例如：我要制作一个用户仅需要1-6张照片，就能生成创意相册的模板，你以端午节为主题，基于现有的基础模板，制作20个用户模板，生成一些端午节祝福的图片，预先填充基础模板，预留几张空白9宫格位置，填充用户上传的图片"></textarea>
+                                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mt-3">
+                                    <div id="album-template-factory-status" class="text-sm text-slate-500 dark:text-slate-400"></div>
+                                    <button id="album-template-factory-generate"
+                                            class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium cursor-pointer transition-colors duration-150 disabled:opacity-50">
+                                        <i class="fas fa-wand-magic-sparkles text-xs"></i>
+                                        <span>生成用户模板草稿</span>
+                                    </button>
+                                </div>
+                                <div id="album-template-base-list" class="hidden grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4"></div>
                             </div>
 
                             <div class="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-5">

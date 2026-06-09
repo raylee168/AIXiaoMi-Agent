@@ -3893,7 +3893,7 @@ async function loadSmartAlbumAutoJobs() {
     }
 }
 
-let albumTemplateState = { items: [], selectedId: null };
+let albumTemplateState = { items: [], selectedId: null, baseTemplates: [], baseVisible: false };
 
 async function albumTemplateFetch(path, options) {
     const response = await fetch('/api/smart-album/templates' + path, options || {});
@@ -3905,6 +3905,7 @@ async function albumTemplateFetch(path, options) {
 async function loadAlbumTemplates() {
     const list = document.getElementById('album-template-list');
     if (!list) return;
+    initAlbumTemplateFactoryPrompt();
     list.innerHTML = '<div class="text-sm text-slate-400">加载中...</div>';
     const params = new URLSearchParams();
     const status = document.getElementById('album-template-status')?.value || '';
@@ -3922,6 +3923,53 @@ async function loadAlbumTemplates() {
     } catch (error) {
         list.innerHTML = `<div class="text-sm text-red-500">${escapeHtml(String(error))}</div>`;
     }
+}
+
+function initAlbumTemplateFactoryPrompt() {
+    const input = document.getElementById('album-template-factory-prompt');
+    if (!input || input.dataset.initialized) return;
+    input.dataset.initialized = '1';
+    input.value = '我要制作一个用户仅需要1-6张照片，就能生成创意相册的模板，你以端午节为主题，基于现有的基础模板，制作20个用户模板，生成一些端午节祝福的图片，预先填充基础模板，预留几张空白9宫格位置，填充用户上传的图片';
+}
+
+async function loadAlbumBaseTemplates() {
+    const box = document.getElementById('album-template-base-list');
+    if (!box) return;
+    if (albumTemplateState.baseTemplates.length) {
+        renderAlbumBaseTemplates();
+        return;
+    }
+    box.innerHTML = '<div class="text-sm text-slate-400">加载底层模板中...</div>';
+    try {
+        const data = await albumTemplateFetch('/base');
+        albumTemplateState.baseTemplates = data.items || [];
+        renderAlbumBaseTemplates();
+    } catch (error) {
+        box.innerHTML = `<div class="text-sm text-red-500">${escapeHtml(String(error))}</div>`;
+    }
+}
+
+function renderAlbumBaseTemplates() {
+    const box = document.getElementById('album-template-base-list');
+    if (!box) return;
+    box.innerHTML = albumTemplateState.baseTemplates.map(item => `
+        <div class="rounded-lg border border-slate-200 dark:border-white/10 p-3 bg-slate-50 dark:bg-white/5">
+            <div class="flex items-center justify-between gap-2">
+                <div class="font-medium text-sm text-slate-700 dark:text-slate-200">${escapeHtml(item.name)}</div>
+                <span class="text-xs text-slate-400">${item.photo_count_min}-${item.photo_count_max}张</span>
+            </div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">${escapeHtml(item.description || '')}</div>
+            <div class="text-[11px] text-slate-400 font-mono mt-2">${escapeHtml(item.base_template_id)}</div>
+        </div>
+    `).join('');
+}
+
+async function toggleAlbumBaseTemplates() {
+    const box = document.getElementById('album-template-base-list');
+    if (!box) return;
+    albumTemplateState.baseVisible = !albumTemplateState.baseVisible;
+    box.classList.toggle('hidden', !albumTemplateState.baseVisible);
+    if (albumTemplateState.baseVisible) await loadAlbumBaseTemplates();
 }
 
 function renderAlbumTemplates() {
@@ -4016,24 +4064,33 @@ async function runAlbumTemplateAction(templateId, action) {
     }
 }
 
-async function generateDuanwuTemplates() {
-    const button = document.getElementById('album-template-generate-duanwu');
+async function generateAlbumTemplatesFromFactory() {
+    const button = document.getElementById('album-template-factory-generate');
+    const status = document.getElementById('album-template-factory-status');
+    const input = document.getElementById('album-template-factory-prompt');
+    const prompt = (input?.value || '').trim();
+    if (!prompt) {
+        if (status) status.innerHTML = '<span class="text-red-500">请先输入模板需求。</span>';
+        return;
+    }
     if (button) button.disabled = true;
+    if (status) status.textContent = '正在基于底层模板生成用户模板草稿...';
     try {
-        await albumTemplateFetch('/generate-seasonal', {
+        const data = await albumTemplateFetch('/factory/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                festival: '端午节',
-                target_count: 8,
-                photo_count_min: 1,
-                photo_count_max: 12,
-                style_direction: '朋友圈、清新、节日氛围、适合自动生成',
-            }),
+            body: JSON.stringify({ prompt }),
         });
+        const plan = data.plan || {};
+        if (status) {
+            const baseCount = (plan.base_templates || []).length;
+            status.innerHTML = `已生成 ${data.created || 0} 个草稿。主题：${escapeHtml(plan.theme || '-')}；照片：${plan.photo_count_min || '-'}-${plan.photo_count_max || '-'} 张；使用底层模板 ${baseCount} 次。请在列表中预览后手动发布。`;
+        }
+        document.getElementById('album-template-status').value = 'draft';
+        document.getElementById('album-template-search').value = '';
         await loadAlbumTemplates();
     } catch (error) {
-        alert(String(error));
+        if (status) status.innerHTML = `<span class="text-red-500">${escapeHtml(String(error))}</span>`;
     } finally {
         if (button) button.disabled = false;
     }
@@ -4076,8 +4133,10 @@ const albumTemplateRefresh = document.getElementById('album-template-refresh');
 if (albumTemplateRefresh) albumTemplateRefresh.addEventListener('click', loadAlbumTemplates);
 const albumTemplateFilter = document.getElementById('album-template-filter');
 if (albumTemplateFilter) albumTemplateFilter.addEventListener('click', loadAlbumTemplates);
-const albumTemplateGenerateDuanwu = document.getElementById('album-template-generate-duanwu');
-if (albumTemplateGenerateDuanwu) albumTemplateGenerateDuanwu.addEventListener('click', generateDuanwuTemplates);
+const albumTemplateFactoryGenerate = document.getElementById('album-template-factory-generate');
+if (albumTemplateFactoryGenerate) albumTemplateFactoryGenerate.addEventListener('click', generateAlbumTemplatesFromFactory);
+const albumTemplateShowBase = document.getElementById('album-template-show-base');
+if (albumTemplateShowBase) albumTemplateShowBase.addEventListener('click', toggleAlbumBaseTemplates);
 const albumTemplateMatchRun = document.getElementById('album-template-match-run');
 if (albumTemplateMatchRun) albumTemplateMatchRun.addEventListener('click', runAlbumTemplateMatchTest);
 
